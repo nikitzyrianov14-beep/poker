@@ -60,10 +60,12 @@ function startTurnTimer() {
         const toCall = Number((currentBet - p.bet).toFixed(2));
         if (toCall <= 0) {
             p.acted = true;
+            io.emit('playSound', 'check');
             addLog(`${p.name} checks (timeout)`);
         } else {
             p.folded = true;
             p.acted = true;
+            io.emit('playSound', 'fold');
             addLog(`${p.name} folds (timeout)`);
         }
         nextTurn();
@@ -205,6 +207,13 @@ io.on('connection', (socket) => {
 
     socket.on('startHand', () => startNewHand());
 
+    socket.on('showCards', () => {
+        const p = players.find(x => x.id === socket.id);
+        if (!p || stage !== 'WAITING' || p.cards.length !== 2 || p.revealed) return;
+        p.revealed = true;
+        broadcastState(`${p.name} shows cards!`);
+    });
+
     socket.on('adjustStack', ({ addAmt, subAmt }) => {
         const p = players.find(x => x.id === socket.id);
         if (!p || stage !== 'WAITING') return;
@@ -242,13 +251,17 @@ io.on('connection', (socket) => {
         if (!p || p.id !== socket.id || stage === 'WAITING') return;
 
         if (type === 'fold') {
-            p.folded = true; p.acted = true; addLog(`${p.name} folds`);
+            p.folded = true; p.acted = true;
+            io.emit('playSound', 'fold');
+            addLog(`${p.name} folds`);
         } else if (type === 'call') {
             const toCall = Math.min(p.chips, Number((currentBet - p.bet).toFixed(2)));
             p.chips = Number((p.chips - toCall).toFixed(2));
             p.bet = Number((p.bet + toCall).toFixed(2));
             pot = Number((pot + toCall).toFixed(2));
             p.acted = true;
+            if (p.chips === 0 && toCall > 0) io.emit('playSound', 'allin');
+            else io.emit('playSound', toCall > 0 ? 'call' : 'check');
             addLog(toCall > 0 ? `${p.name} calls $${toCall.toFixed(2)}` : `${p.name} checks`);
         } else if (type === 'raise') {
             const raiseAmt = Math.max(2.50, Number(amount) || 2.50);
@@ -260,7 +273,13 @@ io.on('connection', (socket) => {
             currentBet = p.bet;
             players.forEach(x => { if (x.id !== p.id) x.acted = false; });
             p.acted = true;
-            addLog(`${p.name} raises to $${p.bet.toFixed(2)}`);
+            if (p.chips === 0) {
+                io.emit('playSound', 'allin');
+                addLog(`${p.name} goes ALL-IN ($${p.bet.toFixed(2)})!`);
+            } else {
+                io.emit('playSound', 'raise');
+                addLog(`${p.name} raises to $${p.bet.toFixed(2)}`);
+            }
         }
         nextTurn();
     });
