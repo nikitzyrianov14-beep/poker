@@ -18,6 +18,9 @@ let turnIndex = 0;
 let dealerIndex = 0;
 let stage = 'WAITING';
 let gameLogs = ['Welcome to LIPOKER!'];
+let turnDeadline = 0;
+let turnTimer = null;
+const TURN_SECONDS = 30;
 
 function addLog(msg) {
     gameLogs.push(msg);
@@ -39,6 +42,34 @@ function createDeck() {
     return d.sort(() => Math.random() - 0.5);
 }
 
+function clearTurnTimer() {
+    if (turnTimer) {
+        clearTimeout(turnTimer);
+        turnTimer = null;
+    }
+    turnDeadline = 0;
+}
+
+function startTurnTimer() {
+    clearTurnTimer();
+    if (stage === 'WAITING') return;
+    turnDeadline = Date.now() + TURN_SECONDS * 1000;
+    turnTimer = setTimeout(() => {
+        const p = players.at(turnIndex);
+        if (!p || stage === 'WAITING') return;
+        const toCall = Number((currentBet - p.bet).toFixed(2));
+        if (toCall <= 0) {
+            p.acted = true;
+            addLog(`${p.name} checks (timeout)`);
+        } else {
+            p.folded = true;
+            p.acted = true;
+            addLog(`${p.name} folds (timeout)`);
+        }
+        nextTurn();
+    }, TURN_SECONDS * 1000);
+}
+
 function broadcastState(message = '') {
     if (message) addLog(message);
     io.emit('gameState', {
@@ -49,7 +80,8 @@ function broadcastState(message = '') {
             isDealer: players.length > 1 && idx === (dealerIndex % players.length),
             revealedCards: stage === 'WAITING' && p.revealed ? p.cards : []
         })),
-        communityCards, pot, currentBet, stage, message, logs: gameLogs
+        communityCards, pot, currentBet, stage, message, logs: gameLogs,
+        turnDeadline, turnDuration: TURN_SECONDS * 1000
     });
     players.forEach(p => {
         if (p.cards.length === 2) {
@@ -86,12 +118,14 @@ function startNewHand() {
     bb.chips = Number((bb.chips - 2.50).toFixed(2)); bb.bet = 2.50;
 
     turnIndex = n === 2 ? sbIdx : (dIdx + 3) % n;
+    startTurnTimer();
     broadcastState('New hand! Blinds $1.25 / $2.50');
 }
 
 function nextTurn() {
     const active = players.filter(p => !p.folded);
     if (active.length === 1) {
+        clearTurnTimer();
         const w = active.at(0);
         w.chips = Number((w.chips + pot).toFixed(2));
         stage = 'WAITING';
@@ -109,6 +143,7 @@ function nextTurn() {
         turnIndex = (turnIndex + 1) % players.length;
     } while (players.at(turnIndex).folded || players.at(turnIndex).chips === 0);
 
+    startTurnTimer();
     broadcastState();
 }
 
@@ -123,14 +158,17 @@ function nextStage() {
 
     turnIndex = players.findIndex(p => !p.folded && p.chips > 0);
     if (turnIndex === -1) {
+        clearTurnTimer();
         while (communityCards.length < 5) communityCards.push(deck.pop());
         finishHand();
         return;
     }
+    startTurnTimer();
     broadcastState();
 }
 
 function finishHand() {
+    clearTurnTimer();
     stage = 'WAITING';
     const active = players.filter(p => !p.folded);
     active.forEach(p => p.revealed = true);
@@ -185,6 +223,7 @@ io.on('connection', (socket) => {
 
     socket.on('resetSession', () => {
         if (stage !== 'WAITING') return;
+        clearTurnTimer();
         players.forEach(p => { p.chips = 100; p.buyIn = 100; p.bet = 0; p.cards = []; p.revealed = false; });
         communityCards = [];
         pot = 0;
@@ -229,7 +268,7 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         const left = players.find(p => p.id === socket.id);
         players = players.filter(p => p.id !== socket.id);
-        if (players.length < 2) stage = 'WAITING';
+        if (players.length < 2) { clearTurnTimer(); stage = 'WAITING'; }
         if (left) broadcastState(`${left.name} left the table`);
     });
 });
