@@ -20,7 +20,9 @@ let stage = 'WAITING';
 let gameLogs = ['Welcome to LIPOKER!'];
 let turnDeadline = 0;
 let turnTimer = null;
+let autoStartTimer = null;
 const TURN_SECONDS = 30;
+const AUTO_NEXT_SECONDS = 20;
 
 function addLog(msg) {
     gameLogs.push(msg);
@@ -40,6 +42,21 @@ function createDeck() {
     let d = [];
     for (let s of suits) for (let v of values) d.push(v + s);
     return d.sort(() => Math.random() - 0.5);
+}
+
+function clearAutoStart() {
+    if (autoStartTimer) {
+        clearTimeout(autoStartTimer);
+        autoStartTimer = null;
+    }
+}
+
+function scheduleAutoStart() {
+    clearAutoStart();
+    if (players.filter(p => p.chips > 0).length < 2 || stage !== 'WAITING') return;
+    autoStartTimer = setTimeout(() => {
+        startNewHand();
+    }, AUTO_NEXT_SECONDS * 1000);
 }
 
 function clearTurnTimer() {
@@ -93,7 +110,9 @@ function broadcastState(message = '') {
 }
 
 function startNewHand() {
-    if (players.length < 2 || stage !== 'WAITING') return;
+    clearAutoStart();
+    const eligible = players.filter(p => p.chips > 0);
+    if (eligible.length < 2 || stage !== 'WAITING') return;
     deck = createDeck();
     communityCards = [];
     pot = 3.75;
@@ -101,8 +120,13 @@ function startNewHand() {
     stage = 'PREFLOP';
 
     players.forEach(p => {
-        p.cards = [deck.pop(), deck.pop()];
-        p.folded = false;
+        if (p.chips > 0) {
+            p.cards = [deck.pop(), deck.pop()];
+            p.folded = false;
+        } else {
+            p.cards = [];
+            p.folded = true;
+        }
         p.revealed = false;
         p.bet = 0;
         p.acted = false;
@@ -116,8 +140,11 @@ function startNewHand() {
 
     const sb = players.at(sbIdx);
     const bb = players.at(bbIdx);
-    sb.chips = Number((sb.chips - 1.25).toFixed(2)); sb.bet = 1.25;
-    bb.chips = Number((bb.chips - 2.50).toFixed(2)); bb.bet = 2.50;
+    const sbPay = Math.min(sb.chips, 1.25);
+    const bbPay = Math.min(bb.chips, 2.50);
+    sb.chips = Number((sb.chips - sbPay).toFixed(2)); sb.bet = sbPay;
+    bb.chips = Number((bb.chips - bbPay).toFixed(2)); bb.bet = bbPay;
+    pot = Number((sbPay + bbPay).toFixed(2));
 
     turnIndex = n === 2 ? sbIdx : (dIdx + 3) % n;
     startTurnTimer();
@@ -132,7 +159,8 @@ function nextTurn() {
         w.chips = Number((w.chips + pot).toFixed(2));
         stage = 'WAITING';
         dealerIndex = (dealerIndex + 1) % players.length;
-        broadcastState(`${w.name} wins $${pot.toFixed(2)}!`);
+        broadcastState(`${w.name} wins $${pot.toFixed(2)}! Next hand in ${AUTO_NEXT_SECONDS}s...`);
+        scheduleAutoStart();
         return;
     }
 
@@ -187,7 +215,8 @@ function finishHand() {
     dealerIndex = (dealerIndex + 1) % players.length;
 
     const names = winners.map(w => `${w.player.name} (${w.enName})`).join(', ');
-    broadcastState(`Winner: ${names} (+$${winAmt.toFixed(2)})!`);
+    broadcastState(`Winner: ${names} (+$${winAmt.toFixed(2)})! Next hand in ${AUTO_NEXT_SECONDS}s...`);
+    scheduleAutoStart();
 }
 
 io.on('connection', (socket) => {
@@ -199,9 +228,11 @@ io.on('connection', (socket) => {
             id: socket.id, name, seat, cards: [],
             chips: 100, buyIn: 100, bet: 0, folded: false, acted: false, revealed: false
         });
-        broadcastState(`${name} took seat #${seat + 1}`);
-        if (players.length === 2 && stage === 'WAITING') {
-            setTimeout(startNewHand, 1500);
+        if (players.length >= 2 && stage === 'WAITING') {
+            broadcastState(`${name} took seat #${seat + 1}. Starting in ${AUTO_NEXT_SECONDS}s...`);
+            scheduleAutoStart();
+        } else {
+            broadcastState(`${name} took seat #${seat + 1}`);
         }
     });
 
@@ -223,6 +254,7 @@ io.on('connection', (socket) => {
             p.chips = Number((p.chips + add).toFixed(2));
             p.buyIn = Number((p.buyIn + add).toFixed(2));
             broadcastState(`${p.name} bought in +$${add.toFixed(2)}`);
+            if (players.filter(x => x.chips > 0).length >= 2) scheduleAutoStart();
         } else if (sub > 0 && p.chips >= sub) {
             p.chips = Number((p.chips - sub).toFixed(2));
             p.buyIn = Math.max(0, Number((p.buyIn - sub).toFixed(2)));
@@ -233,10 +265,12 @@ io.on('connection', (socket) => {
     socket.on('resetSession', () => {
         if (stage !== 'WAITING') return;
         clearTurnTimer();
+        clearAutoStart();
         players.forEach(p => { p.chips = 100; p.buyIn = 100; p.bet = 0; p.cards = []; p.revealed = false; });
         communityCards = [];
         pot = 0;
         broadcastState('Session reset! All stacks set to $100.00');
+        scheduleAutoStart();
     });
 
     socket.on('chatMsg', (text) => {
@@ -287,7 +321,7 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         const left = players.find(p => p.id === socket.id);
         players = players.filter(p => p.id !== socket.id);
-        if (players.length < 2) { clearTurnTimer(); stage = 'WAITING'; }
+        if (players.length < 2) { clearTurnTimer(); clearAutoStart(); stage = 'WAITING'; }
         if (left) broadcastState(`${left.name} left the table`);
     });
 });
