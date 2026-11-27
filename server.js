@@ -17,6 +17,28 @@ let currentBet = 0;
 let turnIndex = 0;
 let stage = 'WAITING';
 
+const comboNamesRu = {
+    'High Card': 'Старшая карта',
+    'Pair': 'Пара',
+    'Two Pair': 'Две пары',
+    'Three of a Kind': 'Сет (Тройка)',
+    'Straight': 'Стрит',
+    'Flush': 'Флеш',
+    'Full House': 'Фулл-хаус',
+    'Four of a Kind': 'Каре',
+    'Straight Flush': 'Стрит-флеш',
+    'Royal Flush': 'Роял-флеш'
+};
+
+function getComboRu(cards) {
+    if (!cards || cards.length < 2) return '';
+    const solved = Hand.solve(cards);
+    if (solved.name === 'Straight Flush' && solved.descr.includes('Royal')) {
+        return 'Роял-флеш';
+    }
+    return comboNamesRu[solved.name] || solved.name;
+}
+
 function createDeck() {
     const suits = ['h', 'd', 'c', 's'];
     const values = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
@@ -25,6 +47,15 @@ function createDeck() {
         for (let v of values) newDeck.push(v + s);
     }
     return newDeck.sort(() => Math.random() - 0.5);
+}
+
+function sendPersonalCombos() {
+    players.forEach(p => {
+        if (p.cards.length === 2) {
+            const combo = getComboRu(p.cards.concat(communityCards));
+            io.to(p.id).emit('yourCombo', combo);
+        }
+    });
 }
 
 function broadcastState(message = '') {
@@ -43,6 +74,7 @@ function broadcastState(message = '') {
         stage,
         message
     });
+    sendPersonalCombos();
 }
 
 function nextTurn() {
@@ -101,13 +133,14 @@ function finishHand() {
     const solved = activePlayers.map(p => {
         const hand = Hand.solve(p.cards.concat(communityCards));
         hand.player = p;
+        hand.ruName = getComboRu(p.cards.concat(communityCards));
         return hand;
     });
     const winners = Hand.winners(solved);
     const winAmount = Math.floor(pot / winners.length);
     winners.forEach(w => w.player.chips += winAmount);
 
-    const names = winners.map(w => `${w.player.name} (${w.descr})`).join(', ');
+    const names = winners.map(w => `${w.player.name} (${w.ruName})`).join(', ');
     broadcastState(`Победитель: ${names}! Выигрыш: ${winAmount}`);
 }
 
@@ -178,4 +211,3 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log('Сервер запущен на порту ' + PORT));
-
