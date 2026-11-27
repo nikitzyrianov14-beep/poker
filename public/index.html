@@ -125,7 +125,43 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
       <button class="top-btn" style="margin:0; padding:4px 10px;" onclick="sendChat()">Send</button>
     </div>
   </div>
-  <script src="/socket.io/socket.io.js"></script>
+</div>
+  <div class="drawer-body" id="bodyLog"><div class="msg-list" id="logList"></div></div>
+</div>
+
+<div class="modal-bg" id="joinModal" onclick="if(event.target===this) closeModals()">
+  <div class="brown-modal" style="width:340px;">
+    <span class="close-x" onclick="closeModals()">X</span>
+    <h2>Take a Seat</h2>
+    <div class="stack-row"><span>Nickname:</span><input type="text" id="nickInp" class="stack-inp" style="background:#3c2817; border-color:#7c5332; text-align:left;" placeholder="Your name"></div>
+    <button class="buy-submit" onclick="confirmSeat()">SIT DOWN ($100.00)</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="stackModal" onclick="if(event.target===this) closeModals()">
+  <div class="brown-modal" style="width:400px;">
+    <span class="close-x" onclick="closeModals()">X</span>
+    <div class="stack-row"><span>Your current stack</span><span id="curStackTxt">$0.00</span></div>
+    <div class="stack-row"><span>Buy more +</span><input type="number" id="addStackInp" class="stack-inp" value="0" min="0" oninput="calcNewStack()"></div>
+    <div class="stack-row"><span>Subtract from stack -</span><input type="number" id="subStackInp" class="stack-inp" value="0" min="0" oninput="calcNewStack()"></div>
+    <div class="stack-row"><span>Your new stack will be</span><span id="newStackTxt">$0.00</span></div>
+    <button class="buy-submit" onclick="submitStack()">BUY MORE</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="lbModal" onclick="if(event.target===this) closeModals()">
+  <div class="brown-modal">
+    <span class="close-x" onclick="closeModals()">X</span>
+    <h2>Leaderboard</h2>
+    <table class="lb-table"><thead><tr><th>Player</th><th>Buy-in</th><th>Profit</th></tr></thead><tbody id="lbBody"></tbody></table>
+    <button class="brown-btn" onclick="socket.emit('resetSession'); closeModals();">RESET SESSION</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="hrModal" onclick="if(event.target===this) closeModals()">
+  <div class="brown-modal"><span class="close-x" onclick="closeModals()">X</span><h2>Hand Rankings</h2><div id="hrContainer"></div></div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 var socket = io();
