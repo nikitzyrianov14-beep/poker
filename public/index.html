@@ -126,117 +126,122 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
     </div>
   </div>
   <script src="/socket.io/socket.io.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 <script>
+var socket = io();
+var suitIcons = { h: '&hearts;', d: '&diams;', c: '&clubs;', s: '&spades;' };
+var selectedSeat = 0, myCards = [], myStack = 0, activeDrawer = null;
 
-const socket = io();
-const suitIcons = { h: '♥', d: '♦', c: '♣', s: '♠' };
-let selectedSeat = 0, myCards = [], myStack = 0, activeDrawer = null;
-const rankingsData = [
-['1. Royal Flush', ['As','Ks','Qs','Js','Ts'], 0],
-['2. Straight Flush', ['5c','4c','3c','2c','Ac'], 0],
-['3. Four of a Kind', ['4c','4s','4d','4h'], 1],
-['4. Full House', ['8c','8s','5d','5h','5c'], 0],
-['5. Flush', ['9s','2s','4s','6s','As'], 0],
-['6. Straight', ['9s','8d','7c','6h','5s'], 0],
-['7. Three of a Kind', ['2s','2h','2d'], 2],
-['8. Two Pair', ['9s','9d','Ks','Kc'], 1],
-['9. One Pair', ['6s','6d'], 3],
-['10. High Card', ['As'], 4]
+var rankingsData = [
+  ['1. Royal Flush', ['As','Ks','Qs','Js','Ts'], 0],
+  ['2. Straight Flush', ['5c','4c','3c','2c','Ac'], 0],
+  ['3. Four of a Kind', ['4c','4s','4d','4h'], 1],
+  ['4. Full House', ['8c','8s','5d','5h','5c'], 0],
+  ['5. Flush', ['9s','2s','4s','6s','As'], 0],
+  ['6. Straight', ['9s','8d','7c','6h','5s'], 0],
+  ['7. Three of a Kind', ['2s','2h','2d'], 2],
+  ['8. Two Pair', ['9s','9d','Ks','Kc'], 1],
+  ['9. One Pair', ['6s','6d'], 3],
+  ['10. High Card', ['As'], 4]
 ];
-document.getElementById('hrContainer').innerHTML = rankingsData.map(([title, cards, empties]) => {
-const cHtml = cards.map(c => {
-const v = c.at(0) === 'T' ? '10' : c.at(0), s = c.at(1), col = (s === 'h' || s === 'd') ? 'red' : 'black';
-return <div class="hr-c ${col}"><span>${v}</span><span>${suitIcons[s]}</span></div>;
+
+document.getElementById('hrContainer').innerHTML = rankingsData.map(function(item) {
+  var title = item.at(0), cards = item.at(1), empties = item.at(2);
+  var cHtml = cards.map(function(c) {
+    var v = c.at(0) === 'T' ? '10' : c.at(0), s = c.at(1), col = (s === 'h' || s === 'd') ? 'red' : 'black';
+    return '<div class="hr-c ' + col + '"><span>' + v + '</span><span>' + suitIcons[s] + '</span></div>';
+  }).join('');
+  return '<div class="hr-row"><span>' + title + '</span><div class="hr-cards">' + cHtml + Array(empties).fill('<div class="hr-empty"></div>').join('') + '</div></div>';
 }).join('');
-return <div class="hr-row"><span>${title}</span><div class="hr-cards">${cHtml}${Array(empties).fill('<div class="hr-empty"></div>').join('')}</div></div>;
-}).join('');
+
 function setFelt(color) { document.getElementById('tableFelt').style.background = color; }
 function copyLink() {
-navigator.clipboard.writeText(window.location.href);
-const btn = document.getElementById('copyLinkBtn');
-btn.innerText = 'LINK COPIED!';
-setTimeout(() => btn.innerText = 'COPY GAME LINK', 2000);
+  navigator.clipboard.writeText(window.location.href);
+  var btn = document.getElementById('copyLinkBtn');
+  btn.innerText = 'LINK COPIED!';
+  setTimeout(function() { btn.innerText = 'COPY GAME LINK'; }, 2000);
 }
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
-function closeModals() { document.querySelectorAll('.modal-bg').forEach(m => m.style.display = 'none'); }
+function closeModals() { document.querySelectorAll('.modal-bg').forEach(function(m) { m.style.display = 'none'; }); }
 function openJoin(seat) { selectedSeat = seat; openModal('joinModal'); document.getElementById('nickInp').focus(); }
 function confirmSeat() {
-const name = document.getElementById('nickInp').value.trim();
-if (!name) return;
-socket.emit('joinSeat', { name, seat: selectedSeat });
-closeModals();
+  var name = document.getElementById('nickInp').value.trim();
+  if (!name) return;
+  socket.emit('joinSeat', { name: name, seat: selectedSeat });
+  closeModals();
 }
 function openStackModal() {
-document.getElementById('curStackTxt').innerText = '$' + myStack.toFixed(2);
-document.getElementById('addStackInp').value = 0;
-document.getElementById('subStackInp').value = 0;
-document.getElementById('newStackTxt').innerText = '$' + myStack.toFixed(2);
-openModal('stackModal');
+  document.getElementById('curStackTxt').innerText = '$' + myStack.toFixed(2);
+  document.getElementById('addStackInp').value = 0;
+  document.getElementById('subStackInp').value = 0;
+  document.getElementById('newStackTxt').innerText = '$' + myStack.toFixed(2);
+  openModal('stackModal');
 }
 function calcNewStack() {
-const add = Math.max(0, Number(document.getElementById('addStackInp').value) || 0);
-const sub = Math.max(0, Number(document.getElementById('subStackInp').value) || 0);
-document.getElementById('newStackTxt').innerText = '$' + Math.max(0, myStack + add - sub).toFixed(2);
+  var add = Math.max(0, Number(document.getElementById('addStackInp').value) || 0);
+  var sub = Math.max(0, Number(document.getElementById('subStackInp').value) || 0);
+  document.getElementById('newStackTxt').innerText = '$' + Math.max(0, myStack + add - sub).toFixed(2);
 }
 function submitStack() {
-socket.emit('adjustStack', { addAmt: Number(document.getElementById('addStackInp').value) || 0, subAmt: Number(document.getElementById('subStackInp').value) || 0 });
-closeModals();
+  socket.emit('adjustStack', { addAmt: Number(document.getElementById('addStackInp').value) || 0, subAmt: Number(document.getElementById('subStackInp').value) || 0 });
+  closeModals();
 }
 function toggleDrawer(tab) {
-const bC = document.getElementById('bodyChat'), bL = document.getElementById('bodyLog'), tC = document.getElementById('tabChat'), tL = document.getElementById('tabLog');
-if (activeDrawer === tab) { bC.classList.remove('open'); bL.classList.remove('open'); tC.classList.remove('active'); tL.classList.remove('active'); activeDrawer = null; }
-else { activeDrawer = tab; bC.classList.toggle('open', tab === 'chat'); bL.classList.toggle('open', tab === 'log'); tC.classList.toggle('active', tab === 'chat'); tL.classList.toggle('active', tab === 'log'); }
+  var bC = document.getElementById('bodyChat'), bL = document.getElementById('bodyLog'), tC = document.getElementById('tabChat'), tL = document.getElementById('tabLog');
+  if (activeDrawer === tab) { bC.classList.remove('open'); bL.classList.remove('open'); tC.classList.remove('active'); tL.classList.remove('active'); activeDrawer = null; }
+  else { activeDrawer = tab; bC.classList.toggle('open', tab === 'chat'); bL.classList.toggle('open', tab === 'log'); tC.classList.toggle('active', tab === 'chat'); tL.classList.toggle('active', tab === 'log'); }
 }
 function sendChat() {
-const inp = document.getElementById('chatInp');
-if (inp.value.trim()) { socket.emit('chatMsg', inp.value); inp.value = ''; }
+  var inp = document.getElementById('chatInp');
+  if (inp.value.trim()) { socket.emit('chatMsg', inp.value); inp.value = ''; }
 }
-function renderCard(c, mini = false) {
-const val = c.at(0) === 'T' ? '10' : c.at(0), suit = c.at(1), col = (suit === 'h' || suit === 'd') ? 'red' : 'black';
-return mini ? <div class="mini-card ${col}">${val}${suitIcons[suit]}</div> : <div class="card ${col}"><div>${val}</div><div>${suitIcons[suit]}</div></div>;
+function renderCard(c, mini) {
+  var val = c.at(0) === 'T' ? '10' : c.at(0), suit = c.at(1), col = (suit === 'h' || suit === 'd') ? 'red' : 'black';
+  return mini ? '<div class="mini-card ' + col + '">' + val + suitIcons[suit] + '</div>' : '<div class="card ' + col + '"><div>' + val + '</div><div>' + suitIcons[suit] + '</div></div>';
 }
-function act(type) { socket.emit('action', { type, amount: document.getElementById('raiseAmt').value }); }
-socket.on('yourCards', (cards) => { myCards = cards; });
-socket.on('yourCombo', (combo) => { document.getElementById('myComboPill').innerText = combo ? Hand: ${combo} : ''; });
-socket.on('chatMessage', ({ sender, text }) => {
-const list = document.getElementById('chatList');
-list.innerHTML += <div><b>${sender}:</b> ${text}</div>;
-list.scrollTop = list.scrollHeight;
+function act(type) { socket.emit('action', { type: type, amount: document.getElementById('raiseAmt').value }); }
+
+socket.on('yourCards', function(cards) { myCards = cards; });
+socket.on('yourCombo', function(combo) { document.getElementById('myComboPill').innerText = combo ? 'Hand: ' + combo : ''; });
+socket.on('chatMessage', function(data) {
+  var list = document.getElementById('chatList');
+  list.innerHTML += '<div><b>' + data.sender + ':</b> ' + data.text + '</div>';
+  list.scrollTop = list.scrollHeight;
 });
-socket.on('gameState', (state) => {
-document.getElementById('potVal').innerText = state.pot.toFixed(2);
-document.getElementById('boardCards').innerHTML = state.communityCards.map(c => renderCard(c, false)).join('');
-if (state.message) document.getElementById('statusBanner').innerText = state.message;
-if (state.logs) {
-const logList = document.getElementById('logList');
-logList.innerHTML = state.logs.map(l => <div>- ${l}</div>).join('');
-logList.scrollTop = logList.scrollHeight;
-}
-const me = state.players.find(p => p.id === socket.id);
-myStack = me ? me.chips : 0;
-for (let i = 0; i < 8; i++) {
-const el = document.getElementById('seat-' + i), p = state.players.find(x => x.seat === i);
-if (!p) { el.innerHTML = me ? '' : <button class="open-btn" onclick="openJoin(${i})">OPEN</button>; }
-else {
-const isMe = p.id === socket.id;
-let cardsHtml = '';
-if (isMe && myCards.length === 2 && state.stage !== 'WAITING') cardsHtml = <div class="mini-cards">${myCards.map(c => renderCard(c, true)).join('')}</div>;
-else if (p.revealedCards && p.revealedCards.length === 2) cardsHtml = <div class="mini-cards">${p.revealedCards.map(c => renderCard(c, true)).join('')}</div>;
-el.innerHTML = ${cardsHtml}<div class="player-plate ${p.isTurn ? 'turn' : ''} ${p.folded ? 'folded' : ''}" onclick="${isMe ? 'openStackModal()' : ''}">${p.isDealer ? '<div class="dealer-chip">D</div>' : ''}<div class="p-name">${p.name}</div><div class="p-stack">$${p.chips.toFixed(2)}</div>${p.bet > 0 ? Bet: $${p.bet.toFixed(2)} : ''}</div>;
-}
-}
-document.getElementById('actionBar').style.display = me ? 'flex' : 'none';
-document.getElementById('turnBtns').style.display = (me && me.isTurn) ? 'inline-block' : 'none';
-document.getElementById('startBtn').style.display = (state.stage === 'WAITING' && state.players.length >= 2) ? 'inline-block' : 'none';
-if (me) {
-const toCall = Number((state.currentBet - me.bet).toFixed(2));
-document.getElementById('callBtn').innerText = toCall > 0 ? CALL $${toCall.toFixed(2)} : 'CHECK';
-}
-const sorted = [...state.players].sort((a, b) => (b.chips - b.buyIn) - (a.chips - a.buyIn));
-document.getElementById('lbBody').innerHTML = sorted.map((p, idx) => {
-const profit = Number((p.chips - p.buyIn).toFixed(2));
-return <tr class="${p.id === socket.id ? 'lb-me' : ''}"><td>${idx + 1}. ${p.name}</td><td>$${p.buyIn.toFixed(2)}</td><td class="${profit >= 0 ? 'pos-green' : 'neg-red'}">${profit >= 0 ? +$${profit.toFixed(2)}:-$${Math.abs(profit).toFixed(2)}}</td></tr>;
-}).join('');
+socket.on('gameState', function(state) {
+  document.getElementById('potVal').innerText = state.pot.toFixed(2);
+  document.getElementById('boardCards').innerHTML = state.communityCards.map(function(c) { return renderCard(c, false); }).join('');
+  if (state.message) document.getElementById('statusBanner').innerText = state.message;
+  if (state.logs) {
+    var logList = document.getElementById('logList');
+    logList.innerHTML = state.logs.map(function(l) { return '<div>- ' + l + '</div>'; }).join('');
+    logList.scrollTop = logList.scrollHeight;
+  }
+  var me = state.players.find(function(p) { return p.id === socket.id; });
+  myStack = me ? me.chips : 0;
+  for (var i = 0; i < 8; i++) {
+    var el = document.getElementById('seat-' + i), p = state.players.find(function(x) { return x.seat === i; });
+    if (!p) { el.innerHTML = me ? '' : '<button class="open-btn" onclick="openJoin(' + i + ')">OPEN</button>'; }
+    else {
+      var isMe = p.id === socket.id;
+      var cardsHtml = '';
+      if (isMe && myCards.length === 2 && state.stage !== 'WAITING') cardsHtml = '<div class="mini-cards">' + myCards.map(function(c) { return renderCard(c, true); }).join('') + '</div>';
+      else if (p.revealedCards && p.revealedCards.length === 2) cardsHtml = '<div class="mini-cards">' + p.revealedCards.map(function(c) { return renderCard(c, true); }).join('') + '</div>';
+      el.innerHTML = cardsHtml + '<div class="player-plate' + (p.isTurn ? ' turn' : '') + (p.folded ? ' folded' : '') + '" onclick="' + (isMe ? 'openStackModal()' : '') + '">' + (p.isDealer ? '<div class="dealer-chip">D</div>' : '') + '<div class="p-name">' + p.name + '</div><div class="p-stack">$' + p.chips.toFixed(2) + '</div>' + (p.bet > 0 ? '<div class="p-bet">Bet: $' + p.bet.toFixed(2) + '</div>' : '') + '</div>';
+    }
+  }
+  document.getElementById('actionBar').style.display = me ? 'flex' : 'none';
+  document.getElementById('turnBtns').style.display = (me && me.isTurn) ? 'inline-block' : 'none';
+  document.getElementById('startBtn').style.display = (state.stage === 'WAITING' && state.players.length >= 2) ? 'inline-block' : 'none';
+  if (me) {
+    var toCall = Number((state.currentBet - me.bet).toFixed(2));
+    document.getElementById('callBtn').innerText = toCall > 0 ? 'CALL $' + toCall.toFixed(2) : 'CHECK';
+  }
+  var sorted = state.players.slice().sort(function(a, b) { return (b.chips - b.buyIn) - (a.chips - a.buyIn); });
+  document.getElementById('lbBody').innerHTML = sorted.map(function(p, idx) {
+    var profit = Number((p.chips - p.buyIn).toFixed(2));
+    return '<tr class="' + (p.id === socket.id ? 'lb-me' : '') + '"><td>' + (idx + 1) + '. ' + p.name + '</td><td>$' + p.buyIn.toFixed(2) + '</td><td class="' + (profit >= 0 ? 'pos-green' : 'neg-red') + '">' + (profit >= 0 ? '+$' + profit.toFixed(2) : '-$' + Math.abs(profit).toFixed(2)) + '</td></tr>';
+  }).join('');
 });
 </script>
 </body>
