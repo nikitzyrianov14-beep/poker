@@ -44,6 +44,7 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
 .btn-call { background: #16a34a; color: #fff; }
 .btn-raise { background: #eab308; color: #000; }
 .btn-fold { background: #dc2626; color: #fff; }
+.btn-show { background: #3b82f6; color: #fff; }
 .raise-panel { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #3a3735; padding-top: 8px; }
 .preset-row { display: flex; align-items: center; gap: 6px; }
 .preset-btn { background: #3a3735; color: #e5e5e5; border: 1px solid #555; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer; flex: 1; }
@@ -81,7 +82,7 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
 </head>
 <body>
 <div class="topbar">
-  <div><div class="brand">LIPOKER</div><div class="blinds">Blinds: $1.25 / $2.50 | Keys: [C] Check/Call, [F] Fold</div></div>
+  <div><div class="brand">LIPOKER</div><div class="blinds">Blinds: $1.25 / $2.50 | Keys: [C] Check/Call, [F] Fold, [S] Show Cards</div></div>
   <div>
     <button class="top-btn" onclick="openModal('lbModal')">LEADERBOARD</button>
     <button class="top-btn" onclick="openModal('hrModal')">Hand Rankings</button>
@@ -118,6 +119,7 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
       <button class="act-btn btn-raise" onclick="act('raise')">RAISE</button>
       <button class="act-btn btn-fold" onclick="act('fold')">FOLD [F]</button>
     </div>
+    <button class="act-btn btn-show" id="showBtn" style="display:none;" onclick="socket.emit('showCards')">SHOW CARDS [S]</button>
   </div>
   <div class="raise-panel" id="raisePanel" style="display:none;">
     <div class="preset-row">
@@ -177,13 +179,64 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
 <div class="modal-bg" id="hrModal" onclick="if(event.target===this) closeModals()">
   <div class="brown-modal"><span class="close-x" onclick="closeModals()">X</span><h2>Hand Rankings</h2><div id="hrContainer"></div></div>
 </div>
-
 <script src="/socket.io/socket.io.js"></script>
 <script>
 var socket = io();
 var suitIcons = { h: '&hearts;', d: '&diams;', c: '&clubs;', s: '&spades;' };
-var selectedSeat = 0, myCards = [], myStack = 0, currentPot = 0, isMyTurn = false, activeDrawer = null;
+var selectedSeat = 0, myCards = [], myStack = 0, currentPot = 0, isMyTurn = false, canShowCards = false, activeDrawer = null;
 var turnDeadline = 0, turnDuration = 30000;
+
+var audioCtx = null;
+function playPokerSound(type) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    var now = audioCtx.currentTime;
+    var osc = audioCtx.createOscillator();
+    var gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    if (type === 'check') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(110, now + 0.08);
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+      osc.start(now); osc.stop(now + 0.09);
+    } else if (type === 'call') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(650, now);
+      osc.frequency.setValueAtTime(900, now + 0.05);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+      osc.start(now); osc.stop(now + 0.14);
+    } else if (type === 'raise') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.18);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc.start(now); osc.stop(now + 0.2);
+    } else if (type === 'fold') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(95, now + 0.18);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc.start(now); osc.stop(now + 0.2);
+    } else if (type === 'allin') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(330, now);
+      osc.frequency.setValueAtTime(495, now + 0.09);
+      osc.frequency.setValueAtTime(660, now + 0.18);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      osc.start(now); osc.stop(now + 0.35);
+    }
+  } catch (e) {}
+}
+
+socket.on('playSound', function(type) { playPokerSound(type); });
 
 var rankingsData = [
   ['1. Royal Flush', ['As','Ks','Qs','Js','Ts'], 0],
@@ -268,9 +321,10 @@ function syncSliderFromInput() {
 }
 
 document.addEventListener('keydown', function(e) {
-  if (!isMyTurn) return;
   if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
   var k = e.key.toLowerCase();
+  if ((k === 's' || k === 'ы') && canShowCards) { socket.emit('showCards'); return; }
+  if (!isMyTurn) return;
   if (k === 'c' || k === 'с') { act('call'); }
   else if (k === 'f' || k === 'а') { act('fold'); }
 });
@@ -313,6 +367,7 @@ socket.on('gameState', function(state) {
   var me = state.players.find(function(p) { return p.id === socket.id; });
   myStack = me ? me.chips : 0;
   isMyTurn = Boolean(me && me.isTurn);
+  canShowCards = Boolean(me && state.stage === 'WAITING' && myCards.length === 2 && (!me.revealedCards || me.revealedCards.length === 0));
 
   for (var i = 0; i < 8; i++) {
     var el = document.getElementById('seat-' + i), p = state.players.find(function(x) { return x.seat === i; });
@@ -329,6 +384,7 @@ socket.on('gameState', function(state) {
   document.getElementById('actionBar').style.display = me ? 'flex' : 'none';
   document.getElementById('turnBtns').style.display = isMyTurn ? 'flex' : 'none';
   document.getElementById('raisePanel').style.display = isMyTurn ? 'flex' : 'none';
+  document.getElementById('showBtn').style.display = canShowCards ? 'inline-block' : 'none';
   document.getElementById('startBtn').style.display = (state.stage === 'WAITING' && state.players.length >= 2) ? 'inline-block' : 'none';
   if (me) {
     var slider = document.getElementById('raiseSlider');
