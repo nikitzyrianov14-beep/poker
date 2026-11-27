@@ -22,18 +22,19 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
 .card { width: 58px; height: 84px; background: #fff; border-radius: 7px; display: flex; flex-direction: column; justify-content: center; align-items: center; font-weight: 800; font-size: 23px; box-shadow: 0 4px 10px rgba(0,0,0,0.55); }
 .red { color: #d90429; }
 .black { color: #111; }
-.seat { position: absolute; width: 145px; text-align: center; transform: translate(-50%, -50%); }
+.seat { position: absolute; width: 150px; text-align: center; transform: translate(-50%, -50%); }
 .s0 { top: 88%; left: 50%; } .s1 { top: 84%; left: 21%; } .s2 { top: 50%; left: 6%; } .s3 { top: 15%; left: 21%; }
 .s4 { top: 15%; left: 79%; } .s5 { top: 50%; left: 94%; } .s6 { top: 84%; left: 79%; } .s7 { top: 9%; left: 50%; }
 .open-btn { background: rgba(30,30,30,0.75); color: #4ade80; border: 1px solid #3f3f46; padding: 8px 22px; border-radius: 5px; font-size: 13px; font-weight: 700; cursor: pointer; }
 .open-btn:hover { background: #27272a; }
-.player-plate { background: #2b2927; border: 2px solid #524e4b; border-radius: 7px; padding: 8px 12px; cursor: pointer; position: relative; }
-.player-plate.turn { border-color: #facc15; box-shadow: 0 0 15px #facc15; }
+.plate-wrap { position: relative; padding: 3px; border-radius: 9px; background: #524e4b; transition: box-shadow 0.2s; }
+.plate-wrap.turn { box-shadow: 0 0 16px rgba(250, 204, 21, 0.55); }
+.player-plate { background: #2b2927; border-radius: 6px; padding: 7px 11px; cursor: pointer; position: relative; }
 .player-plate.folded { opacity: 0.45; }
 .p-name { font-size: 13px; font-weight: 700; color: #fff; }
 .p-stack { font-size: 13px; color: #a3e635; font-weight: 600; }
 .p-bet { font-size: 12px; color: #fbbf24; margin-top: 2px; }
-.dealer-chip { position: absolute; top: -9px; right: -9px; background: #fff; color: #000; font-weight: 900; font-size: 12px; width: 22px; height: 22px; line-height: 22px; border-radius: 50%; border: 2px solid #000; }
+.dealer-chip { position: absolute; top: -10px; right: -10px; background: #fff; color: #000; font-weight: 900; font-size: 12px; width: 22px; height: 22px; line-height: 22px; border-radius: 50%; border: 2px solid #000; z-index: 3; }
 .mini-cards { display: flex; justify-content: center; gap: 5px; margin-bottom: 5px; }
 .mini-card { width: 40px; height: 56px; background: #fff; border-radius: 5px; font-size: 16px; font-weight: 800; line-height: 56px; box-shadow: 0 3px 6px rgba(0,0,0,0.6); }
 .action-bar { position: fixed; bottom: 14px; right: 20px; display: flex; flex-direction: column; gap: 8px; background: rgba(25,25,25,0.95); padding: 12px 16px; border-radius: 8px; border: 1px solid #444; z-index: 20; min-width: 360px; }
@@ -182,6 +183,7 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
 var socket = io();
 var suitIcons = { h: '&hearts;', d: '&diams;', c: '&clubs;', s: '&spades;' };
 var selectedSeat = 0, myCards = [], myStack = 0, currentPot = 0, isMyTurn = false, activeDrawer = null;
+var turnDeadline = 0, turnDuration = 30000;
 
 var rankingsData = [
   ['1. Royal Flush', ['As','Ks','Qs','Js','Ts'], 0],
@@ -273,6 +275,16 @@ document.addEventListener('keydown', function(e) {
   else if (k === 'f' || k === 'а') { act('fold'); }
 });
 
+setInterval(function() {
+  var activeWrap = document.getElementById('activeTimerWrap');
+  if (!activeWrap || !turnDeadline) return;
+  var rem = Math.max(0, turnDeadline - Date.now());
+  var pct = Math.min(100, (rem / turnDuration) * 100);
+  var deg = (pct / 100) * 360;
+  var col = pct > 50 ? '#4ade80' : (pct > 25 ? '#facc15' : '#ef4444');
+  activeWrap.style.background = 'conic-gradient(' + col + ' ' + deg + 'deg, #3a3735 0deg)';
+}, 50);
+
 function renderCard(c, mini) {
   var val = c.at(0) === 'T' ? '10' : c.at(0), suit = c.at(1), col = (suit === 'h' || suit === 'd') ? 'red' : 'black';
   return mini ? '<div class="mini-card ' + col + '">' + val + suitIcons[suit] + '</div>' : '<div class="card ' + col + '"><div>' + val + '</div><div>' + suitIcons[suit] + '</div></div>';
@@ -288,6 +300,8 @@ socket.on('chatMessage', function(data) {
 });
 socket.on('gameState', function(state) {
   currentPot = state.pot;
+  turnDeadline = state.turnDeadline || 0;
+  turnDuration = state.turnDuration || 30000;
   document.getElementById('potVal').innerText = state.pot.toFixed(2);
   document.getElementById('boardCards').innerHTML = state.communityCards.map(function(c) { return renderCard(c, false); }).join('');
   if (state.message) document.getElementById('statusBanner').innerText = state.message;
@@ -308,7 +322,8 @@ socket.on('gameState', function(state) {
       var cardsHtml = '';
       if (isMe && myCards.length === 2 && state.stage !== 'WAITING') cardsHtml = '<div class="mini-cards">' + myCards.map(function(c) { return renderCard(c, true); }).join('') + '</div>';
       else if (p.revealedCards && p.revealedCards.length === 2) cardsHtml = '<div class="mini-cards">' + p.revealedCards.map(function(c) { return renderCard(c, true); }).join('') + '</div>';
-      el.innerHTML = cardsHtml + '<div class="player-plate' + (p.isTurn ? ' turn' : '') + (p.folded ? ' folded' : '') + '" onclick="' + (isMe ? 'openStackModal()' : '') + '">' + (p.isDealer ? '<div class="dealer-chip">D</div>' : '') + '<div class="p-name">' + p.name + '</div><div class="p-stack">$' + p.chips.toFixed(2) + '</div>' + (p.bet > 0 ? '<div class="p-bet">Bet: $' + p.bet.toFixed(2) + '</div>' : '') + '</div>';
+      var wrapId = p.isTurn ? ' id="activeTimerWrap"' : '';
+      el.innerHTML = cardsHtml + '<div' + wrapId + ' class="plate-wrap' + (p.isTurn ? ' turn' : '') + '"><div class="player-plate' + (p.folded ? ' folded' : '') + '" onclick="' + (isMe ? 'openStackModal()' : '') + '">' + (p.isDealer ? '<div class="dealer-chip">D</div>' : '') + '<div class="p-name">' + p.name + '</div><div class="p-stack">$' + p.chips.toFixed(2) + '</div>' + (p.bet > 0 ? '<div class="p-bet">Bet: $' + p.bet.toFixed(2) + '</div>' : '') + '</div></div>';
     }
   }
   document.getElementById('actionBar').style.display = me ? 'flex' : 'none';
