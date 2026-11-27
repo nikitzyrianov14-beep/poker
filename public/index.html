@@ -125,6 +125,9 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
       <button class="top-btn" style="margin:0; padding:4px 10px;" onclick="sendChat()">Send</button>
     </div>
   </div>
+  <script src="/socket.io/socket.io.js"></script>
+<script>
+
 const socket = io();
 const suitIcons = { h: '♥', d: '♦', c: '♣', s: '♠' };
 let selectedSeat = 0, myCards = [], myStack = 0, activeDrawer = null;
