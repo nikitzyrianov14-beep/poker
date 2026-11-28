@@ -43,9 +43,9 @@ body { font-family: 'Segoe UI', sans-serif; background: #232120; color: #e5e5e5;
 .mini-card .card-center { bottom: 4px; right: 5px; font-size: 22px; }
 
 .red { color: #dc2626; } .black { color: #0f172a; }
-body.deck-dark .card, body.deck-dark .mini-card { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); border-color: #475569; }
+body.deck-dark .card, body.deck-dark .mini-card, body.deck-dark .hr-c { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); border: 1px solid #475569; }
 body.deck-dark .black { color: #f8fafc; } body.deck-dark .red { color: #fb7185; }
-body.deck-gold .card, body.deck-gold .mini-card { background: linear-gradient(145deg, #fef08a 0%, #eab308 100%); border-color: #a16207; }
+body.deck-gold .card, body.deck-gold .mini-card, body.deck-gold .hr-c { background: linear-gradient(145deg, #fef08a 0%, #eab308 100%); border: 1px solid #a16207; }
 body.deck-four .suit-d { color: #2563eb !important; } body.deck-four .suit-c { color: #16a34a !important; }
 
 .seat { position: absolute; width: 168px; text-align: center; transform: translate(-50%, -50%); }
@@ -318,7 +318,8 @@ document.getElementById('hrContainer').innerHTML = rankingsData.map(function(ite
   var title = item.at(0), cards = item.at(1), empties = item.at(2);
   var cHtml = cards.map(function(c) {
     var v = c.at(0) === 'T' ? '10' : c.at(0), s = c.at(1), col = (s === 'h' || s === 'd') ? 'red' : 'black';
-    return '<div class="hr-c ' + col + '"><span>' + v + '</span><span>' + suitIcons[s] + '</span></div>';
+      return '<div class="hr-c ' + col + ' suit-' + s + '"><span>' + v + '</span><span>' + suitIcons[s] + '</span></div>';
+
   }).join('');
   return '<div class="hr-row"><span>' + title + '</span><div class="hr-cards">' + cHtml + Array(empties).fill('<div class="hr-empty"></div>').join('') + '</div></div>';
 }).join('');
