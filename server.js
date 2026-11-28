@@ -249,12 +249,20 @@ io.on('connection', (socket) => {
 
     socket.on('startHand', () => startNewHand());
 
-    socket.on('showCards', () => {
+        socket.on('showCards', () => {
         const p = players.find(x => x.id === socket.id);
         if (!p || stage !== 'WAITING' || p.cards.length !== 2 || p.revealed) return;
         p.revealed = true;
         broadcastState(`${p.name} shows cards!`);
     });
+
+    socket.on('changeAvatar', (avatar) => {
+        const p = players.find(x => x.id === socket.id);
+        if (!p || !avatar) return;
+        p.avatar = avatar;
+        broadcastState();
+    });
+
 
     socket.on('adjustStack', ({ addAmt, subAmt }) => {
         const p = players.find(x => x.id === socket.id);
